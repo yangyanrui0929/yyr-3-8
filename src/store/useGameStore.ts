@@ -51,6 +51,7 @@ interface GameState {
   complaints: Complaint[];
   announcementCooldown: number;
   highlightedCell: { x: number; y: number } | null;
+  repairTarget: { x: number; y: number } | null;
   setSelectedTool: (tool: ToolType) => void;
   placeOrRemove: (x: number, y: number) => void;
   rotateCell: (x: number, y: number) => void;
@@ -64,6 +65,9 @@ interface GameState {
   focusComplaintLocation: (x: number, y: number) => void;
   clearHighlight: () => void;
   getDissipationProgress: () => Array<{ x: number; y: number; progress: number; rumorLevel: number; peakRumor: number }>;
+  setRepairTarget: (x: number, y: number) => void;
+  clearRepairTarget: () => void;
+  repairTargetCell: () => boolean;
 }
 
 function createEmptyGrid(): GridCell[][] {
@@ -179,6 +183,7 @@ function initGame(): Omit<GameState, keyof GameStateActions> {
     complaints,
     announcementCooldown,
     highlightedCell: null,
+    repairTarget: null,
   };
 }
 
@@ -188,6 +193,9 @@ type GameStateActions = Pick<
   | 'placeOrRemove'
   | 'rotateCell'
   | 'repairCell'
+  | 'setRepairTarget'
+  | 'clearRepairTarget'
+  | 'repairTargetCell'
   | 'tick'
   | 'resetGame'
   | 'openSettlement'
@@ -504,18 +512,37 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const trustFactor = newTrust / 100;
     let newSatisfaction = state.satisfaction;
-    if (unpoweredHouseCount > 0) {
-      const directSatLoss = Math.min(1.5, unpoweredHouseCount * 0.08 + totalUnpoweredSeverity * 0.002);
-      newSatisfaction = Math.max(0, newSatisfaction - directSatLoss);
-    }
+    let baseChange = 0;
+
     if (coverage >= 0.8) {
-      newSatisfaction = Math.min(100, newSatisfaction + 0.2 * trustFactor);
+      baseChange = 0.2 * trustFactor;
     } else if (coverage >= 0.5) {
-      newSatisfaction = Math.min(100, newSatisfaction + 0.05 * trustFactor);
+      baseChange = 0.05 * trustFactor;
     } else {
       const penaltyMultiplier = 1 + (1 - trustFactor) * 0.5;
-      newSatisfaction = Math.max(0, newSatisfaction - 0.3 * penaltyMultiplier);
+      baseChange = -0.3 * penaltyMultiplier;
     }
+
+    if (unpoweredHouseCount > 0) {
+      const directSatLoss = Math.min(1.5, unpoweredHouseCount * 0.08 + totalUnpoweredSeverity * 0.002);
+      baseChange -= directSatLoss;
+    }
+
+    if (avgHouseRumor > 5) {
+      const rumorPenalty = Math.min(0.8, avgHouseRumor * 0.008);
+      baseChange -= rumorPenalty;
+      if (avgHouseRumor > 30) {
+        baseChange -= 0.1;
+      }
+    }
+
+    const rumorThresholdForGrowth = 15;
+    if (avgHouseRumor > rumorThresholdForGrowth && baseChange > 0) {
+      const suppressionFactor = Math.max(0, 1 - (avgHouseRumor - rumorThresholdForGrowth) / (100 - rumorThresholdForGrowth));
+      baseChange *= suppressionFactor;
+    }
+
+    newSatisfaction = Math.max(0, Math.min(100, newSatisfaction + baseChange));
 
     saveToLocalStorage({
       grid: newGrid,
@@ -562,6 +589,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       complaints: [],
       announcementCooldown: 0,
       highlightedCell: null,
+      repairTarget: null,
     });
   },
 
@@ -621,7 +649,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   focusComplaintLocation: (x, y) => {
+    const state = get();
+    const cell = state.grid[y]?.[x];
     set({ highlightedCell: { x, y } });
+    if (cell && cell.faulty) {
+      set({ repairTarget: { x, y } });
+    }
     const cellEl = document.querySelector(`[data-x="${x}"][data-y="${y}"]`);
     if (cellEl) {
       cellEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
@@ -631,10 +664,30 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (s.highlightedCell && s.highlightedCell.x === x && s.highlightedCell.y === y) {
         set({ highlightedCell: null });
       }
-    }, 4000);
+    }, 8000);
   },
 
   clearHighlight: () => set({ highlightedCell: null }),
+
+  setRepairTarget: (x, y) => {
+    set({ repairTarget: { x, y }, highlightedCell: { x, y } });
+  },
+
+  clearRepairTarget: () => set({ repairTarget: null }),
+
+  repairTargetCell: () => {
+    const state = get();
+    if (!state.repairTarget) return false;
+    const { x, y } = state.repairTarget;
+    const cell = state.grid[y]?.[x];
+    if (cell && cell.faulty) {
+      get().repairCell(x, y);
+      set({ repairTarget: null, highlightedCell: null });
+      return true;
+    }
+    set({ repairTarget: null });
+    return false;
+  },
 
   getDissipationProgress: () => {
     const state = get();

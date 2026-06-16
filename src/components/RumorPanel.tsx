@@ -1,7 +1,7 @@
 import React from 'react';
 import { useGameStore } from '../store/useGameStore';
 import { ANNOUNCEMENT_COOLDOWN } from '../utils/constants';
-import { Shield, AlertTriangle, Megaphone, Clock, Wind, MapPin, Wrench } from 'lucide-react';
+import { Shield, AlertTriangle, Megaphone, Clock, Wind, MapPin, Wrench, X } from 'lucide-react';
 
 export const RumorPanel: React.FC = () => {
   const {
@@ -13,6 +13,11 @@ export const RumorPanel: React.FC = () => {
     focusComplaintLocation,
     getDissipationProgress,
     clearHighlight,
+    repairTargetCell,
+    repairTarget,
+    clearRepairTarget,
+    grid,
+    highlightedCell,
   } = useGameStore();
 
   const avgRumor = getAverageRumorLevel();
@@ -171,62 +176,123 @@ export const RumorPanel: React.FC = () => {
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-orange-500" />
-            高投诉区域（点击定位）
+            高投诉区域
           </h3>
           <span className="text-xs text-gray-400">{sortedComplaints.length} 条</span>
         </div>
+
+        {repairTarget && (
+          <div className="mb-3 p-2 bg-red-50 border-2 border-red-300 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-red-700 flex items-center gap-1">
+                🔧 待维修目标: ({repairTarget.x}, {repairTarget.y})
+              </span>
+              <button
+                onClick={clearRepairTarget}
+                className="p-1 hover:bg-red-100 rounded transition-colors"
+              >
+                <X className="w-3 h-3 text-red-500" />
+              </button>
+            </div>
+            <button
+              onClick={() => repairTargetCell()}
+              className="w-full py-1.5 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm animate-pulse"
+            >
+              ⚡ 立即维修（一键修复）
+            </button>
+          </div>
+        )}
+
         <div className="space-y-2 max-h-52 overflow-y-auto">
           {sortedComplaints.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-4">暂无投诉 😊</p>
           ) : (
-            sortedComplaints.map((complaint, idx) => (
-              <button
-                key={complaint.id}
-                onClick={() => handleComplaintClick(complaint.x, complaint.y)}
-                className={`w-full text-left p-2 rounded-lg border transition-all duration-200 hover:shadow-md hover:scale-[1.01] active:scale-95 ${getSeverityColor(
-                  complaint.severity
-                )}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-1 mb-1">
-                      {idx === 0 && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold">
-                          🔥 优先
+            sortedComplaints.map((complaint, idx) => {
+              const cell = grid[complaint.y]?.[complaint.x];
+              const hasFault = cell?.faulty;
+              const isTarget = repairTarget?.x === complaint.x && repairTarget?.y === complaint.y;
+              return (
+                <div
+                  key={complaint.id}
+                  className={`w-full text-left p-2 rounded-lg border transition-all duration-200 hover:shadow-md ${isTarget ? 'ring-2 ring-red-400 scale-[1.01]' : ''} ${getSeverityColor(
+                    complaint.severity
+                  )}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-1 mb-1">
+                        {idx === 0 && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold">
+                            🔥 优先
+                          </span>
+                        )}
+                        {isTarget && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 text-[10px] font-bold">
+                            🎯 目标
+                          </span>
+                        )}
+                        <span className="text-xs font-semibold text-gray-700">
+                          {complaint.message}
                         </span>
-                      )}
-                      <span className="text-xs font-semibold text-gray-700">
-                        {complaint.message}
-                      </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-1.5">
+                        <span className="inline-flex items-center gap-0.5">
+                          <MapPin className="w-3 h-3" />
+                          ({complaint.x}, {complaint.y})
+                        </span>
+                        {hasFault ? (
+                          <span className="inline-flex items-center gap-0.5 text-red-500 font-medium">
+                            <Wrench className="w-3 h-3" />
+                            有故障待修复
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-0.5 text-green-600 font-medium">
+                            ✓ 已修复，传闻消散中
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => handleComplaintClick(complaint.x, complaint.y)}
+                          className="flex-1 py-1 bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-bold rounded transition-colors"
+                        >
+                          📍 定位
+                        </button>
+                        {hasFault && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              focusComplaintLocation(complaint.x, complaint.y);
+                            }}
+                            className={`flex-1 py-1 text-white text-[10px] font-bold rounded transition-colors ${isTarget ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'}`}
+                            disabled={isTarget}
+                          >
+                            {isTarget ? '已设为目标' : '🔧 设为维修目标'}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] text-gray-500">
-                      <span className="inline-flex items-center gap-0.5">
-                        <MapPin className="w-3 h-3" />
-                        ({complaint.x}, {complaint.y})
+                    <div className="text-right flex-shrink-0">
+                      <span className="text-xs font-bold block">
+                        {Math.round(complaint.severity)}
                       </span>
-                      <span className="inline-flex items-center gap-0.5">
-                        <Wrench className="w-3 h-3" />
-                        点击优先修复
-                      </span>
+                      <span className="text-[10px] opacity-70">严重度</span>
                     </div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <span className="text-xs font-bold block">
-                      {Math.round(complaint.severity)}
-                    </span>
-                    <span className="text-[10px] opacity-70">严重度</span>
                   </div>
                 </div>
-              </button>
-            ))
+              );
+            })
           )}
         </div>
-        {dissipationProgress.length > 0 && (
+        {(repairTarget || highlightedCell) && (
           <button
-            onClick={clearHighlight}
+            onClick={() => {
+              clearHighlight();
+              clearRepairTarget();
+            }}
             className="w-full mt-2 text-xs text-gray-400 hover:text-gray-600 py-1"
           >
-            清除高亮
+            清除所有提示
           </button>
         )}
       </div>

@@ -6,6 +6,7 @@ interface GridCellProps {
   cell: GridCellType;
   selectedTool: ToolType;
   highlighted: boolean;
+  isRepairTarget: boolean;
   onClick: () => void;
   onRightClick: (e: React.MouseEvent) => void;
 }
@@ -14,6 +15,7 @@ export const GridCellComponent: React.FC<GridCellProps> = ({
   cell,
   selectedTool,
   highlighted,
+  isRepairTarget,
   onClick,
   onRightClick,
 }) => {
@@ -44,6 +46,7 @@ export const GridCellComponent: React.FC<GridCellProps> = ({
         ${canRepair ? 'ring-2 ring-orange-400 ring-inset animate-pulse' : ''}
         ${cell.powered && !cell.faulty ? 'bg-green-400/60' : ''}
         ${highlighted ? 'ring-4 ring-yellow-400 ring-offset-2 ring-offset-transparent animate-bounce z-20' : ''}
+        ${isRepairTarget && canRepair ? 'ring-4 ring-red-500 ring-offset-4 ring-offset-white animate-pulse z-30 scale-110' : ''}
       `}
       style={{
         borderRadius: '4px',
@@ -56,9 +59,16 @@ export const GridCellComponent: React.FC<GridCellProps> = ({
         />
       )}
       <Building cell={cell} />
+      {isRepairTarget && canRepair && (
+        <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap bg-red-600 text-white px-2 py-1 rounded text-xs font-bold z-50 shadow-lg border-2 border-white animate-pulse">
+          👆 点击这里维修
+        </div>
+      )}
       {canRepair && (
-        <div className="absolute inset-0 flex items-center justify-center bg-orange-500/20 z-10">
-          <span className="text-xs font-bold text-white drop-shadow-lg">🔧维修</span>
+        <div className={`absolute inset-0 flex items-center justify-center z-10 ${isRepairTarget ? 'bg-red-500/40' : 'bg-orange-500/20'}`}>
+          <span className={`text-xs font-bold text-white drop-shadow-lg ${isRepairTarget ? 'animate-ping' : ''}`}>
+            🔧{isRepairTarget ? '点我修复' : '维修'}
+          </span>
         </div>
       )}
       {hasRumor && cell.type === 'house' && (

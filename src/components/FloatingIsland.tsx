@@ -4,12 +4,19 @@ import { GridCellComponent } from './GridCell';
 import { GRID_SIZE } from '../utils/constants';
 
 export const FloatingIsland: React.FC = () => {
-  const { grid, selectedTool, placeOrRemove, rotateCell, repairCell, dayTime, highlightedCell } = useGameStore();
+  const { grid, selectedTool, placeOrRemove, rotateCell, repairCell, dayTime, highlightedCell, repairTarget, repairTargetCell, clearRepairTarget } = useGameStore();
 
   const handleCellClick = (x: number, y: number) => {
     const cell = grid[y][x];
+    if (repairTarget && repairTarget.x === x && repairTarget.y === y && cell.faulty) {
+      repairTargetCell();
+      return;
+    }
     if (cell.faulty) {
       repairCell(x, y);
+      if (repairTarget && repairTarget.x === x && repairTarget.y === y) {
+        clearRepairTarget();
+      }
     } else {
       placeOrRemove(x, y);
     }
@@ -96,6 +103,7 @@ export const FloatingIsland: React.FC = () => {
                   cell={cell}
                   selectedTool={selectedTool}
                   highlighted={highlightedCell !== null && highlightedCell.x === x && highlightedCell.y === y}
+                  isRepairTarget={repairTarget !== null && repairTarget.x === x && repairTarget.y === y}
                   onClick={() => handleCellClick(x, y)}
                   onRightClick={(e) => handleCellRightClick(e, x, y)}
                 />
