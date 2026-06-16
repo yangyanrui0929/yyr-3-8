@@ -5,6 +5,7 @@ import { Building } from './Building';
 interface GridCellProps {
   cell: GridCellType;
   selectedTool: ToolType;
+  highlighted: boolean;
   onClick: () => void;
   onRightClick: (e: React.MouseEvent) => void;
 }
@@ -12,6 +13,7 @@ interface GridCellProps {
 export const GridCellComponent: React.FC<GridCellProps> = ({
   cell,
   selectedTool,
+  highlighted,
   onClick,
   onRightClick,
 }) => {
@@ -41,6 +43,7 @@ export const GridCellComponent: React.FC<GridCellProps> = ({
         ${canRemove ? 'hover:ring-2 hover:ring-red-400 hover:ring-inset' : ''}
         ${canRepair ? 'ring-2 ring-orange-400 ring-inset animate-pulse' : ''}
         ${cell.powered && !cell.faulty ? 'bg-green-400/60' : ''}
+        ${highlighted ? 'ring-4 ring-yellow-400 ring-offset-2 ring-offset-transparent animate-bounce z-20' : ''}
       `}
       style={{
         borderRadius: '4px',

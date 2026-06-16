@@ -10,6 +10,7 @@ export interface GridCell {
   powered: boolean;
   faulty: boolean;
   rumorLevel: number;
+  peakRumorLevel: number;
   unpoweredTicks: number;
 }
 

@@ -1,8 +1,8 @@
 import React from 'react';
 import { useGameStore } from '../store/useGameStore';
-import { GRID_SIZE, BUILDING_STATS } from '../utils/constants';
+import { GRID_SIZE } from '../utils/constants';
 import { countPoweredBuildings } from '../utils/powerCalculator';
-import { X, Smile, Meh, Frown, Zap, Battery, Home, Factory, Wind } from 'lucide-react';
+import { X, Smile, Zap, Battery, Home, Factory, Wind, Shield } from 'lucide-react';
 
 export const SettlementModal: React.FC = () => {
   const {
@@ -10,13 +10,17 @@ export const SettlementModal: React.FC = () => {
     closeSettlement,
     grid,
     satisfaction,
+    trust,
     totalGeneration,
     totalConsumption,
     storedPower,
     maxStorage,
     dayTime,
     poweredCells,
+    getAverageRumorLevel,
   } = useGameStore();
+
+  const avgRumor = getAverageRumorLevel();
 
   if (!showSettlement) return null;
 
@@ -52,10 +56,10 @@ export const SettlementModal: React.FC = () => {
 
   const gradeInfo = getGrade();
 
-  const getSatisfactionIcon = () => {
-    if (satisfaction >= 70) return <Smile className="w-8 h-8 text-green-500" />;
-    if (satisfaction >= 40) return <Meh className="w-8 h-8 text-yellow-500" />;
-    return <Frown className="w-8 h-8 text-red-500" />;
+  const getTrustColor = () => {
+    if (trust >= 60) return 'text-green-500';
+    if (trust >= 30) return 'text-yellow-500';
+    return 'text-red-500';
   };
 
   return (
@@ -89,18 +93,31 @@ export const SettlementModal: React.FC = () => {
             <p className="text-gray-500 text-sm mt-2">{gradeInfo.desc}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-green-50 rounded-xl p-4 text-center">
-              <Smile className="w-6 h-6 text-green-500 mx-auto mb-1" />
-              <p className="text-2xl font-bold text-gray-800">{Math.round(satisfaction)}%</p>
-              <p className="text-xs text-gray-500">满意度</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-green-50 rounded-xl p-3 text-center">
+              <Smile className="w-5 h-5 text-green-500 mx-auto mb-1" />
+              <p className="text-xl font-bold text-gray-800">{Math.round(satisfaction)}%</p>
+              <p className="text-[10px] text-gray-500">满意度</p>
             </div>
-            <div className="bg-blue-50 rounded-xl p-4 text-center">
-              <Zap className="w-6 h-6 text-blue-500 mx-auto mb-1" />
-              <p className="text-2xl font-bold text-gray-800">{Math.round(coverage * 100)}%</p>
-              <p className="text-xs text-gray-500">供电覆盖率</p>
+            <div className="bg-purple-50 rounded-xl p-3 text-center">
+              <Shield className={`w-5 h-5 mx-auto mb-1 ${getTrustColor()}`} />
+              <p className="text-xl font-bold text-gray-800">{Math.round(trust)}%</p>
+              <p className="text-[10px] text-gray-500">信任度</p>
+            </div>
+            <div className="bg-blue-50 rounded-xl p-3 text-center">
+              <Zap className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+              <p className="text-xl font-bold text-gray-800">{Math.round(coverage * 100)}%</p>
+              <p className="text-[10px] text-gray-500">覆盖率</p>
             </div>
           </div>
+          {avgRumor > 5 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-2 text-center">
+              <p className="text-xs text-orange-700">
+                平均传闻强度: <b>{Math.round(avgRumor)}%</b>
+                {avgRumor > 30 ? ' · 建议优先修复断电住房！' : ''}
+              </p>
+            </div>
+          )}
 
           <div className="bg-gray-50 rounded-xl p-4 space-y-3">
             <h3 className="text-sm font-bold text-gray-700">🏗️ 建筑统计</h3>

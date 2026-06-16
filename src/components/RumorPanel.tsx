@@ -1,7 +1,7 @@
 import React from 'react';
 import { useGameStore } from '../store/useGameStore';
 import { ANNOUNCEMENT_COOLDOWN } from '../utils/constants';
-import { Shield, AlertTriangle, Megaphone, Clock } from 'lucide-react';
+import { Shield, AlertTriangle, Megaphone, Clock, Wind, MapPin, Wrench } from 'lucide-react';
 
 export const RumorPanel: React.FC = () => {
   const {
@@ -10,10 +10,17 @@ export const RumorPanel: React.FC = () => {
     announcementCooldown,
     issueAnnouncement,
     getAverageRumorLevel,
+    focusComplaintLocation,
+    getDissipationProgress,
+    clearHighlight,
   } = useGameStore();
 
   const avgRumor = getAverageRumorLevel();
+  const dissipationProgress = getDissipationProgress();
   const cooldownPercent = (announcementCooldown / ANNOUNCEMENT_COOLDOWN) * 100;
+  const avgDissipation = dissipationProgress.length > 0
+    ? dissipationProgress.reduce((sum, d) => sum + d.progress, 0) / dissipationProgress.length
+    : 0;
 
   const getTrustIcon = () => {
     if (trust >= 70) return <Shield className="w-5 h-5 text-green-500" />;
@@ -30,9 +37,15 @@ export const RumorPanel: React.FC = () => {
   };
 
   const getSeverityColor = (severity: number) => {
-    if (severity >= 70) return 'text-red-600 bg-red-50';
-    if (severity >= 40) return 'text-yellow-600 bg-yellow-50';
-    return 'text-orange-500 bg-orange-50';
+    if (severity >= 70) return 'text-red-600 bg-red-50 border-red-200';
+    if (severity >= 40) return 'text-yellow-700 bg-yellow-50 border-yellow-200';
+    return 'text-orange-600 bg-orange-50 border-orange-200';
+  };
+
+  const sortedComplaints = [...complaints].sort((a, b) => b.severity - a.severity);
+
+  const handleComplaintClick = (x: number, y: number) => {
+    focusComplaintLocation(x, y);
   };
 
   return (
@@ -100,44 +113,122 @@ export const RumorPanel: React.FC = () => {
           </div>
         )}
         <p className="text-xs text-gray-500 mt-2">
-          立即降低所有区域 {Math.round(25)}% 传闻，提升少量信任度
+          立即降低所有区域 25% 传闻，提升 5 点信任度
         </p>
       </div>
 
       <div className="bg-white/90 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-white/50">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-orange-500" />
-            最近投诉
+            <Wind className="w-4 h-4 text-teal-500" />
+            传闻消散进度
           </h3>
-          <span className="text-xs text-gray-400">{complaints.length} 条</span>
+          {dissipationProgress.length > 0 && (
+            <span className="text-xs text-teal-600 font-semibold">
+              平均 {Math.round(avgDissipation)}%
+            </span>
+          )}
         </div>
-        <div className="space-y-2 max-h-48 overflow-y-auto">
-          {complaints.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-4">暂无投诉 😊</p>
-          ) : (
-            complaints.map((complaint) => (
+        {dissipationProgress.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-3">
+            暂无消散中的传闻 ✓
+          </p>
+        ) : (
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {dissipationProgress.slice(0, 6).map((item) => (
               <div
-                key={complaint.id}
-                className="p-2 rounded-lg bg-gray-50 border border-gray-100"
+                key={`${item.x}-${item.y}`}
+                className="p-2 rounded-lg bg-teal-50 border border-teal-100"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs text-gray-700 flex-1">{complaint.message}</p>
-                  <span
-                    className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${getSeverityColor(
-                      complaint.severity
-                    )}`}
-                  >
-                    {Math.round(complaint.severity)}
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-600 flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    ({item.x}, {item.y})
+                  </span>
+                  <span className="text-xs font-semibold text-teal-600">
+                    {Math.round(item.progress)}%
                   </span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">
-                  位置: ({complaint.x}, {complaint.y})
+                <div className="w-full h-1.5 bg-teal-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${item.progress}%`,
+                      background: 'linear-gradient(90deg, #5EEAD4, #14B8A6)',
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  剩余: {Math.round(item.rumorLevel)} / 峰值: {Math.round(item.peakRumor)}
                 </p>
               </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white/90 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-white/50">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-orange-500" />
+            高投诉区域（点击定位）
+          </h3>
+          <span className="text-xs text-gray-400">{sortedComplaints.length} 条</span>
+        </div>
+        <div className="space-y-2 max-h-52 overflow-y-auto">
+          {sortedComplaints.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-4">暂无投诉 😊</p>
+          ) : (
+            sortedComplaints.map((complaint, idx) => (
+              <button
+                key={complaint.id}
+                onClick={() => handleComplaintClick(complaint.x, complaint.y)}
+                className={`w-full text-left p-2 rounded-lg border transition-all duration-200 hover:shadow-md hover:scale-[1.01] active:scale-95 ${getSeverityColor(
+                  complaint.severity
+                )}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1 mb-1">
+                      {idx === 0 && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold">
+                          🔥 优先
+                        </span>
+                      )}
+                      <span className="text-xs font-semibold text-gray-700">
+                        {complaint.message}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                      <span className="inline-flex items-center gap-0.5">
+                        <MapPin className="w-3 h-3" />
+                        ({complaint.x}, {complaint.y})
+                      </span>
+                      <span className="inline-flex items-center gap-0.5">
+                        <Wrench className="w-3 h-3" />
+                        点击优先修复
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <span className="text-xs font-bold block">
+                      {Math.round(complaint.severity)}
+                    </span>
+                    <span className="text-[10px] opacity-70">严重度</span>
+                  </div>
+                </div>
+              </button>
             ))
           )}
         </div>
+        {dissipationProgress.length > 0 && (
+          <button
+            onClick={clearHighlight}
+            className="w-full mt-2 text-xs text-gray-400 hover:text-gray-600 py-1"
+          >
+            清除高亮
+          </button>
+        )}
       </div>
 
       <div className="bg-white/90 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-white/50">

@@ -4,7 +4,7 @@ import { GridCellComponent } from './GridCell';
 import { GRID_SIZE } from '../utils/constants';
 
 export const FloatingIsland: React.FC = () => {
-  const { grid, selectedTool, placeOrRemove, rotateCell, repairCell, dayTime } = useGameStore();
+  const { grid, selectedTool, placeOrRemove, rotateCell, repairCell, dayTime, highlightedCell } = useGameStore();
 
   const handleCellClick = (x: number, y: number) => {
     const cell = grid[y][x];
@@ -95,6 +95,7 @@ export const FloatingIsland: React.FC = () => {
                 <GridCellComponent
                   cell={cell}
                   selectedTool={selectedTool}
+                  highlighted={highlightedCell !== null && highlightedCell.x === x && highlightedCell.y === y}
                   onClick={() => handleCellClick(x, y)}
                   onRightClick={(e) => handleCellRightClick(e, x, y)}
                 />

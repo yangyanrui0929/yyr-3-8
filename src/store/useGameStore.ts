@@ -50,6 +50,7 @@ interface GameState {
   showSettlement: boolean;
   complaints: Complaint[];
   announcementCooldown: number;
+  highlightedCell: { x: number; y: number } | null;
   setSelectedTool: (tool: ToolType) => void;
   placeOrRemove: (x: number, y: number) => void;
   rotateCell: (x: number, y: number) => void;
@@ -60,6 +61,9 @@ interface GameState {
   closeSettlement: () => void;
   issueAnnouncement: () => void;
   getAverageRumorLevel: () => number;
+  focusComplaintLocation: (x: number, y: number) => void;
+  clearHighlight: () => void;
+  getDissipationProgress: () => Array<{ x: number; y: number; progress: number; rumorLevel: number; peakRumor: number }>;
 }
 
 function createEmptyGrid(): GridCell[][] {
@@ -75,6 +79,7 @@ function createEmptyGrid(): GridCell[][] {
         powered: false,
         faulty: false,
         rumorLevel: 0,
+        peakRumorLevel: 0,
         unpoweredTicks: 0,
       });
     }
@@ -111,6 +116,7 @@ function loadFromLocalStorage(): PersistedState | null {
         row.map((cell) => ({
           ...cell,
           rumorLevel: cell.rumorLevel ?? 0,
+          peakRumorLevel: cell.peakRumorLevel ?? 0,
           unpoweredTicks: cell.unpoweredTicks ?? 0,
         }))
       );
@@ -172,6 +178,7 @@ function initGame(): Omit<GameState, keyof GameStateActions> {
     showSettlement: false,
     complaints,
     announcementCooldown,
+    highlightedCell: null,
   };
 }
 
@@ -187,6 +194,9 @@ type GameStateActions = Pick<
   | 'closeSettlement'
   | 'issueAnnouncement'
   | 'getAverageRumorLevel'
+  | 'focusComplaintLocation'
+  | 'clearHighlight'
+  | 'getDissipationProgress'
 >;
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -209,6 +219,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           powered: false,
           faulty: false,
           rumorLevel: 0,
+          peakRumorLevel: 0,
           unpoweredTicks: 0,
         };
       }
@@ -323,7 +334,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let complaintIdCounter = newComplaints.length > 0
       ? Math.max(...newComplaints.map(c => c.id)) + 1
       : 0;
-    let newAnnouncementCooldown = Math.max(0, state.announcementCooldown - 1);
+    const newAnnouncementCooldown = Math.max(0, state.announcementCooldown - 1);
 
     for (let y = 0; y < GRID_SIZE; y++) {
       for (let x = 0; x < GRID_SIZE; x++) {
@@ -345,14 +356,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
+    let unpoweredHouseCount = 0;
+    let totalUnpoweredSeverity = 0;
     for (let y = 0; y < GRID_SIZE; y++) {
       for (let x = 0; x < GRID_SIZE; x++) {
         const cell = newGrid[y][x];
         if (cell.type === 'house' && !cell.powered) {
           newGrid[y][x].unpoweredTicks = cell.unpoweredTicks + 1;
+          unpoweredHouseCount++;
+          totalUnpoweredSeverity += newGrid[y][x].unpoweredTicks;
           if (newGrid[y][x].unpoweredTicks >= RUMOR_UNPOWERED_THRESHOLD) {
             const rumorIncrease = RUMOR_PER_UNPOWERED_TICK;
-            newGrid[y][x].rumorLevel = Math.min(100, cell.rumorLevel + rumorIncrease);
+            const newRumor = Math.min(100, cell.rumorLevel + rumorIncrease);
+            newGrid[y][x].rumorLevel = newRumor;
+            if (newRumor > cell.peakRumorLevel) {
+              newGrid[y][x].peakRumorLevel = newRumor;
+            }
             if (Math.random() < 0.1) {
               const complaint: Complaint = {
                 id: complaintIdCounter++,
@@ -383,10 +402,14 @@ export const useGameStore = create<GameState>((set, get) => ({
             const ny = y + dy;
             if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
               const spreadAmount = rumorSourceGrid[y][x] * RUMOR_SPREAD_AMOUNT;
-              newGrid[ny][nx].rumorLevel = Math.min(
+              const newRumor = Math.min(
                 100,
                 newGrid[ny][nx].rumorLevel + spreadAmount * 0.3
               );
+              newGrid[ny][nx].rumorLevel = newRumor;
+              if (newRumor > newGrid[ny][nx].peakRumorLevel) {
+                newGrid[ny][nx].peakRumorLevel = newRumor;
+              }
             }
           }
         }
@@ -428,6 +451,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           const decayRate = hasHouse ? RUMOR_DECAY_RATE * 0.5 : RUMOR_DECAY_RATE;
           newGrid[y][x].rumorLevel = Math.max(0, cell.rumorLevel - decayRate);
         }
+        if (newGrid[y][x].rumorLevel <= 0) {
+          newGrid[y][x].peakRumorLevel = 0;
+        }
       }
     }
 
@@ -444,9 +470,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const avgHouseRumor = houseCount > 0 ? totalRumor / houseCount : 0;
 
     let newTrust = state.trust;
+    if (unpoweredHouseCount > 0) {
+      const directTrustLoss = Math.min(2, unpoweredHouseCount * 0.05 + totalUnpoweredSeverity * 0.001);
+      newTrust = Math.max(0, newTrust - directTrustLoss);
+    }
     if (avgHouseRumor > 10) {
       newTrust = Math.max(0, newTrust - TRUST_DECAY_FROM_RUMOR * (avgHouseRumor / 50));
-    } else if (avgHouseRumor < 5) {
+    } else if (avgHouseRumor < 5 && unpoweredHouseCount === 0) {
       newTrust = Math.min(100, newTrust + TRUST_RECOVERY_RATE);
     }
 
@@ -470,17 +500,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     );
     const totalBuildings = houses + factories;
     const totalPowered = poweredHouses + poweredFactories;
-    let coverage = totalBuildings > 0 ? totalPowered / totalBuildings : 1;
+    const coverage = totalBuildings > 0 ? totalPowered / totalBuildings : 1;
 
     const trustFactor = newTrust / 100;
     let newSatisfaction = state.satisfaction;
+    if (unpoweredHouseCount > 0) {
+      const directSatLoss = Math.min(1.5, unpoweredHouseCount * 0.08 + totalUnpoweredSeverity * 0.002);
+      newSatisfaction = Math.max(0, newSatisfaction - directSatLoss);
+    }
     if (coverage >= 0.8) {
-      newSatisfaction = Math.min(100, state.satisfaction + 0.2 * trustFactor);
+      newSatisfaction = Math.min(100, newSatisfaction + 0.2 * trustFactor);
     } else if (coverage >= 0.5) {
-      newSatisfaction = Math.min(100, state.satisfaction + 0.05 * trustFactor);
+      newSatisfaction = Math.min(100, newSatisfaction + 0.05 * trustFactor);
     } else {
       const penaltyMultiplier = 1 + (1 - trustFactor) * 0.5;
-      newSatisfaction = Math.max(0, state.satisfaction - 0.3 * penaltyMultiplier);
+      newSatisfaction = Math.max(0, newSatisfaction - 0.3 * penaltyMultiplier);
     }
 
     saveToLocalStorage({
@@ -527,6 +561,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       showSettlement: false,
       complaints: [],
       announcementCooldown: 0,
+      highlightedCell: null,
     });
   },
 
@@ -583,5 +618,38 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
     return count > 0 ? totalRumor / count : 0;
+  },
+
+  focusComplaintLocation: (x, y) => {
+    set({ highlightedCell: { x, y } });
+    const cellEl = document.querySelector(`[data-x="${x}"][data-y="${y}"]`);
+    if (cellEl) {
+      cellEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    }
+    setTimeout(() => {
+      const s = get();
+      if (s.highlightedCell && s.highlightedCell.x === x && s.highlightedCell.y === y) {
+        set({ highlightedCell: null });
+      }
+    }, 4000);
+  },
+
+  clearHighlight: () => set({ highlightedCell: null }),
+
+  getDissipationProgress: () => {
+    const state = get();
+    const result: Array<{ x: number; y: number; progress: number; rumorLevel: number; peakRumor: number }> = [];
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        const cell = state.grid[y][x];
+        if (cell.peakRumorLevel > 0) {
+          const progress = cell.peakRumorLevel > 0
+            ? Math.max(0, Math.min(100, ((cell.peakRumorLevel - cell.rumorLevel) / cell.peakRumorLevel) * 100))
+            : 0;
+          result.push({ x, y, progress, rumorLevel: cell.rumorLevel, peakRumor: cell.peakRumorLevel });
+        }
+      }
+    }
+    return result.sort((a, b) => b.progress - a.progress);
   },
 }));
