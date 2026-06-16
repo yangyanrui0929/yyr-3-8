@@ -2,6 +2,8 @@ import { FloatingIsland } from '@/components/FloatingIsland';
 import { Toolbar } from '@/components/Toolbar';
 import { StatusBar } from '@/components/StatusBar';
 import { SettlementModal } from '@/components/SettlementModal';
+import { RumorMap } from '@/components/RumorMap';
+import { RumorPanel } from '@/components/RumorPanel';
 import { useGameLoop } from '@/hooks/useGameLoop';
 import { useGameStore } from '@/store/useGameStore';
 
@@ -21,7 +23,7 @@ export default function Home() {
     >
       <Clouds isNight={isNight} />
 
-      <div className="relative z-10 max-w-6xl mx-auto px-4 py-6 flex flex-col gap-6">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 py-6 flex flex-col gap-6">
         <header className="text-center">
           <h1
             className={`text-4xl font-extrabold mb-2 tracking-tight ${
@@ -36,29 +38,30 @@ export default function Home() {
             🏝️ 浮岛电网建造
           </h1>
           <p className={`text-sm ${isNight ? 'text-slate-300' : 'text-gray-600'}`}>
-            放置风车和建筑，铺设电线，为你的浮岛带来光明！
+            放置风车和建筑，铺设电线，管理传闻，为你的浮岛带来光明！
           </p>
         </header>
 
         <StatusBar />
 
-        <div className="flex flex-col lg:flex-row gap-6 items-start justify-center">
-          <div className="order-2 lg:order-1 lg:w-56">
+        <div className="flex flex-col xl:flex-row gap-6 items-start justify-center">
+          <div className="order-2 xl:order-1 xl:w-56 flex flex-col gap-4">
             <Toolbar />
           </div>
 
-          <div className="order-1 lg:order-2 flex justify-center items-center py-8">
+          <div className="order-1 xl:order-2 flex justify-center items-center py-4">
             <FloatingIsland />
           </div>
 
-          <div className="order-3 lg:w-56 hidden lg:block">
-            <GameGuide isNight={isNight} />
+          <div className="order-3 xl:w-64 flex flex-col gap-4">
+            <RumorMap />
+            <RumorPanel />
           </div>
         </div>
 
         <footer className="text-center pb-4">
           <p className={`text-xs ${isNight ? 'text-slate-400' : 'text-gray-500'}`}>
-            用你的智慧构建一个完美的电力网络 ⚡
+            用你的智慧构建一个完美的电力网络 ⚡ 维护居民信任与满意度
           </p>
         </footer>
       </div>

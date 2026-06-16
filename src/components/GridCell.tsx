@@ -19,6 +19,15 @@ export const GridCellComponent: React.FC<GridCellProps> = ({
   const canPlace = isEmpty && selectedTool !== 'remove';
   const canRemove = !isEmpty && selectedTool === 'remove';
   const canRepair = cell.faulty;
+  const hasRumor = cell.rumorLevel > 5;
+
+  const getRumorOverlayStyle = () => {
+    if (!hasRumor) return {};
+    const intensity = Math.min(1, cell.rumorLevel / 100);
+    return {
+      backgroundColor: `rgba(239, 68, 68, ${intensity * 0.4})`,
+    };
+  };
 
   return (
     <div
@@ -37,10 +46,21 @@ export const GridCellComponent: React.FC<GridCellProps> = ({
         borderRadius: '4px',
       }}
     >
+      {hasRumor && (
+        <div
+          className="absolute inset-0 pointer-events-none transition-colors duration-300"
+          style={getRumorOverlayStyle()}
+        />
+      )}
       <Building cell={cell} />
       {canRepair && (
         <div className="absolute inset-0 flex items-center justify-center bg-orange-500/20 z-10">
           <span className="text-xs font-bold text-white drop-shadow-lg">🔧维修</span>
+        </div>
+      )}
+      {hasRumor && cell.type === 'house' && (
+        <div className="absolute -top-1 -left-1 text-xs animate-bounce">
+          💬
         </div>
       )}
     </div>

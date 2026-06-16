@@ -7,6 +7,19 @@ import {
   FAULT_CHANCE,
   BUILDING_STATS,
   DAY_THRESHOLD,
+  Complaint,
+  RUMOR_SPREAD_CHANCE,
+  RUMOR_DECAY_RATE,
+  RUMOR_UNPOWERED_THRESHOLD,
+  RUMOR_PER_UNPOWERED_TICK,
+  RUMOR_SPREAD_AMOUNT,
+  TRUST_DECAY_FROM_RUMOR,
+  TRUST_RECOVERY_RATE,
+  ANNOUNCEMENT_RUMOR_REDUCTION,
+  ANNOUNCEMENT_COOLDOWN,
+  MAX_COMPLAINTS,
+  COMPLAINT_MESSAGES,
+  DIR_OFFSETS,
 } from '../utils/constants';
 import { calculatePowerNetwork, countPoweredBuildings } from '../utils/powerCalculator';
 
@@ -17,6 +30,10 @@ interface PersistedState {
   dayTime: number;
   storedPower: number;
   satisfaction: number;
+  trust: number;
+  complaints: Complaint[];
+  announcementCooldown: number;
+  complaintIdCounter: number;
 }
 
 interface GameState {
@@ -25,11 +42,14 @@ interface GameState {
   storedPower: number;
   maxStorage: number;
   satisfaction: number;
+  trust: number;
   selectedTool: ToolType;
   poweredCells: Set<string>;
   totalGeneration: number;
   totalConsumption: number;
   showSettlement: boolean;
+  complaints: Complaint[];
+  announcementCooldown: number;
   setSelectedTool: (tool: ToolType) => void;
   placeOrRemove: (x: number, y: number) => void;
   rotateCell: (x: number, y: number) => void;
@@ -38,6 +58,8 @@ interface GameState {
   resetGame: () => void;
   openSettlement: () => void;
   closeSettlement: () => void;
+  issueAnnouncement: () => void;
+  getAverageRumorLevel: () => number;
 }
 
 function createEmptyGrid(): GridCell[][] {
@@ -52,6 +74,8 @@ function createEmptyGrid(): GridCell[][] {
         rotation: 0,
         powered: false,
         faulty: false,
+        rumorLevel: 0,
+        unpoweredTicks: 0,
       });
     }
     grid.push(row);
@@ -66,6 +90,10 @@ function saveToLocalStorage(state: PersistedState): void {
       dayTime: state.dayTime,
       storedPower: state.storedPower,
       satisfaction: state.satisfaction,
+      trust: state.trust,
+      complaints: state.complaints,
+      announcementCooldown: state.announcementCooldown,
+      complaintIdCounter: state.complaintIdCounter,
     });
     localStorage.setItem(STORAGE_KEY, data);
   } catch {
@@ -79,11 +107,22 @@ function loadFromLocalStorage(): PersistedState | null {
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (data && data.grid && Array.isArray(data.grid)) {
+      const grid = data.grid.map((row: GridCell[]) =>
+        row.map((cell) => ({
+          ...cell,
+          rumorLevel: cell.rumorLevel ?? 0,
+          unpoweredTicks: cell.unpoweredTicks ?? 0,
+        }))
+      );
       return {
-        grid: data.grid,
+        grid,
         dayTime: data.dayTime ?? 20,
         storedPower: data.storedPower ?? 10,
         satisfaction: data.satisfaction ?? 50,
+        trust: data.trust ?? 100,
+        complaints: data.complaints ?? [],
+        announcementCooldown: data.announcementCooldown ?? 0,
+        complaintIdCounter: data.complaintIdCounter ?? 0,
       };
     }
   } catch {
@@ -112,6 +151,9 @@ function initGame(): Omit<GameState, keyof GameStateActions> {
   const dayTime = saved ? saved.dayTime : 20;
   const storedPower = saved ? saved.storedPower : 10;
   const satisfaction = saved ? saved.satisfaction : 50;
+  const trust = saved ? saved.trust : 100;
+  const complaints = saved ? saved.complaints : [];
+  const announcementCooldown = saved ? saved.announcementCooldown : 0;
 
   const { newGrid, poweredCells, totalGeneration, totalConsumption, batteryCapacity } =
     recalcGrid(grid, dayTime, storedPower);
@@ -122,11 +164,14 @@ function initGame(): Omit<GameState, keyof GameStateActions> {
     storedPower,
     maxStorage: batteryCapacity,
     satisfaction,
+    trust,
     selectedTool: 'windmill',
     poweredCells,
     totalGeneration,
     totalConsumption,
     showSettlement: false,
+    complaints,
+    announcementCooldown,
   };
 }
 
@@ -140,6 +185,8 @@ type GameStateActions = Pick<
   | 'resetGame'
   | 'openSettlement'
   | 'closeSettlement'
+  | 'issueAnnouncement'
+  | 'getAverageRumorLevel'
 >;
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -161,6 +208,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           rotation: 0,
           powered: false,
           faulty: false,
+          rumorLevel: 0,
+          unpoweredTicks: 0,
         };
       }
     } else {
@@ -188,6 +237,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       dayTime: state.dayTime,
       storedPower: state.storedPower,
       satisfaction: state.satisfaction,
+      trust: state.trust,
+      complaints: state.complaints,
+      announcementCooldown: state.announcementCooldown,
+      complaintIdCounter: state.complaints.length > 0 
+        ? Math.max(...state.complaints.map(c => c.id)) + 1 
+        : 0,
     });
 
     set(nextState);
@@ -216,6 +271,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       dayTime: state.dayTime,
       storedPower: state.storedPower,
       satisfaction: state.satisfaction,
+      trust: state.trust,
+      complaints: state.complaints,
+      announcementCooldown: state.announcementCooldown,
+      complaintIdCounter: state.complaints.length > 0 
+        ? Math.max(...state.complaints.map(c => c.id)) + 1 
+        : 0,
     });
 
     set(nextState);
@@ -244,6 +305,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       dayTime: state.dayTime,
       storedPower: state.storedPower,
       satisfaction: state.satisfaction,
+      trust: state.trust,
+      complaints: state.complaints,
+      announcementCooldown: state.announcementCooldown,
+      complaintIdCounter: state.complaints.length > 0 
+        ? Math.max(...state.complaints.map(c => c.id)) + 1 
+        : 0,
     });
 
     set(nextState);
@@ -252,6 +319,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   tick: () => {
     const state = get();
     const newGrid = state.grid.map((row) => row.map((c) => ({ ...c })));
+    let newComplaints = [...state.complaints];
+    let complaintIdCounter = newComplaints.length > 0
+      ? Math.max(...newComplaints.map(c => c.id)) + 1
+      : 0;
+    let newAnnouncementCooldown = Math.max(0, state.announcementCooldown - 1);
 
     for (let y = 0; y < GRID_SIZE; y++) {
       for (let x = 0; x < GRID_SIZE; x++) {
@@ -271,6 +343,111 @@ export const useGameStore = create<GameState>((set, get) => ({
       for (let xx = 0; xx < GRID_SIZE; xx++) {
         newGrid[yy][xx].powered = poweredCells.has(`${xx},${yy}`);
       }
+    }
+
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        const cell = newGrid[y][x];
+        if (cell.type === 'house' && !cell.powered) {
+          newGrid[y][x].unpoweredTicks = cell.unpoweredTicks + 1;
+          if (newGrid[y][x].unpoweredTicks >= RUMOR_UNPOWERED_THRESHOLD) {
+            const rumorIncrease = RUMOR_PER_UNPOWERED_TICK;
+            newGrid[y][x].rumorLevel = Math.min(100, cell.rumorLevel + rumorIncrease);
+            if (Math.random() < 0.1) {
+              const complaint: Complaint = {
+                id: complaintIdCounter++,
+                x,
+                y,
+                severity: Math.min(100, cell.rumorLevel + rumorIncrease),
+                timestamp: Date.now(),
+                message: COMPLAINT_MESSAGES[Math.floor(Math.random() * COMPLAINT_MESSAGES.length)],
+              };
+              newComplaints.unshift(complaint);
+              if (newComplaints.length > MAX_COMPLAINTS) {
+                newComplaints = newComplaints.slice(0, MAX_COMPLAINTS);
+              }
+            }
+          }
+        } else if (cell.type === 'house' && cell.powered) {
+          newGrid[y][x].unpoweredTicks = Math.max(0, cell.unpoweredTicks - 0.5);
+        }
+      }
+    }
+
+    const rumorSourceGrid = newGrid.map(row => row.map(c => c.rumorLevel));
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        if (rumorSourceGrid[y][x] > 20 && Math.random() < RUMOR_SPREAD_CHANCE) {
+          for (const [dx, dy] of DIR_OFFSETS) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
+              const spreadAmount = rumorSourceGrid[y][x] * RUMOR_SPREAD_AMOUNT;
+              newGrid[ny][nx].rumorLevel = Math.min(
+                100,
+                newGrid[ny][nx].rumorLevel + spreadAmount * 0.3
+              );
+            }
+          }
+        }
+      }
+    }
+
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        const cell = newGrid[y][x];
+        if (cell.type === 'broadcastTower' && cell.powered) {
+          const stats = BUILDING_STATS.broadcastTower;
+          const range = stats.rumorRange ?? 2;
+          const reduction = stats.rumorReduction ?? 0.3;
+          for (let dy = -range; dy <= range; dy++) {
+            for (let dx = -range; dx <= range; dx++) {
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
+                const distance = Math.abs(dx) + Math.abs(dy);
+                if (distance <= range) {
+                  const falloff = 1 - distance / (range + 1);
+                  newGrid[ny][nx].rumorLevel = Math.max(
+                    0,
+                    newGrid[ny][nx].rumorLevel - reduction * falloff * 2
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        const cell = newGrid[y][x];
+        if (cell.rumorLevel > 0) {
+          const hasHouse = cell.type === 'house';
+          const decayRate = hasHouse ? RUMOR_DECAY_RATE * 0.5 : RUMOR_DECAY_RATE;
+          newGrid[y][x].rumorLevel = Math.max(0, cell.rumorLevel - decayRate);
+        }
+      }
+    }
+
+    let totalRumor = 0;
+    let houseCount = 0;
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        if (newGrid[y][x].type === 'house') {
+          houseCount++;
+          totalRumor += newGrid[y][x].rumorLevel;
+        }
+      }
+    }
+    const avgHouseRumor = houseCount > 0 ? totalRumor / houseCount : 0;
+
+    let newTrust = state.trust;
+    if (avgHouseRumor > 10) {
+      newTrust = Math.max(0, newTrust - TRUST_DECAY_FROM_RUMOR * (avgHouseRumor / 50));
+    } else if (avgHouseRumor < 5) {
+      newTrust = Math.min(100, newTrust + TRUST_RECOVERY_RATE);
     }
 
     const netPower = totalGeneration - totalConsumption;
@@ -295,13 +472,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const totalPowered = poweredHouses + poweredFactories;
     let coverage = totalBuildings > 0 ? totalPowered / totalBuildings : 1;
 
+    const trustFactor = newTrust / 100;
     let newSatisfaction = state.satisfaction;
     if (coverage >= 0.8) {
-      newSatisfaction = Math.min(100, state.satisfaction + 0.2);
+      newSatisfaction = Math.min(100, state.satisfaction + 0.2 * trustFactor);
     } else if (coverage >= 0.5) {
-      newSatisfaction = Math.min(100, state.satisfaction + 0.05);
+      newSatisfaction = Math.min(100, state.satisfaction + 0.05 * trustFactor);
     } else {
-      newSatisfaction = Math.max(0, state.satisfaction - 0.3);
+      const penaltyMultiplier = 1 + (1 - trustFactor) * 0.5;
+      newSatisfaction = Math.max(0, state.satisfaction - 0.3 * penaltyMultiplier);
     }
 
     saveToLocalStorage({
@@ -309,6 +488,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       dayTime: newDayTime,
       storedPower: newStoredPower,
       satisfaction: newSatisfaction,
+      trust: newTrust,
+      complaints: newComplaints,
+      announcementCooldown: newAnnouncementCooldown,
+      complaintIdCounter,
     });
 
     set({
@@ -317,9 +500,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       storedPower: newStoredPower,
       maxStorage: batteryCapacity,
       satisfaction: newSatisfaction,
+      trust: newTrust,
       poweredCells,
       totalGeneration,
       totalConsumption,
+      complaints: newComplaints,
+      announcementCooldown: newAnnouncementCooldown,
     });
   },
 
@@ -333,14 +519,69 @@ export const useGameStore = create<GameState>((set, get) => ({
       storedPower: 10,
       maxStorage: result.batteryCapacity,
       satisfaction: 50,
+      trust: 100,
       selectedTool: 'windmill',
       poweredCells: result.poweredCells,
       totalGeneration: result.totalGeneration,
       totalConsumption: result.totalConsumption,
       showSettlement: false,
+      complaints: [],
+      announcementCooldown: 0,
     });
   },
 
   openSettlement: () => set({ showSettlement: true }),
   closeSettlement: () => set({ showSettlement: false }),
+
+  issueAnnouncement: () => {
+    const state = get();
+    if (state.announcementCooldown > 0) return;
+
+    const newGrid = state.grid.map((row) => row.map((c) => ({ ...c })));
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        newGrid[y][x].rumorLevel = Math.max(
+          0,
+          newGrid[y][x].rumorLevel - ANNOUNCEMENT_RUMOR_REDUCTION
+        );
+      }
+    }
+
+    const newTrust = Math.min(100, state.trust + 5);
+    const newAnnouncementCooldown = ANNOUNCEMENT_COOLDOWN;
+
+    saveToLocalStorage({
+      grid: newGrid,
+      dayTime: state.dayTime,
+      storedPower: state.storedPower,
+      satisfaction: state.satisfaction,
+      trust: newTrust,
+      complaints: state.complaints,
+      announcementCooldown: newAnnouncementCooldown,
+      complaintIdCounter: state.complaints.length > 0
+        ? Math.max(...state.complaints.map(c => c.id)) + 1
+        : 0,
+    });
+
+    set({
+      grid: newGrid,
+      trust: newTrust,
+      announcementCooldown: newAnnouncementCooldown,
+    });
+  },
+
+  getAverageRumorLevel: () => {
+    const state = get();
+    let totalRumor = 0;
+    let count = 0;
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        if (state.grid[y][x].type === 'house') {
+          totalRumor += state.grid[y][x].rumorLevel;
+          count++;
+        }
+      }
+    }
+    return count > 0 ? totalRumor / count : 0;
+  },
 }));

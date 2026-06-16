@@ -57,6 +57,9 @@ export function calculatePowerNetwork(
       if (cell.type === 'factory') {
         totalConsumption += BUILDING_STATS.factory.consumption;
       }
+      if (cell.type === 'broadcastTower') {
+        totalConsumption += BUILDING_STATS.broadcastTower.consumption;
+      }
     }
   }
 
@@ -118,7 +121,8 @@ export function calculatePowerNetwork(
         currentCell.type === 'windmill' ||
         currentCell.type === 'house' ||
         currentCell.type === 'factory' ||
-        currentCell.type === 'battery'
+        currentCell.type === 'battery' ||
+        currentCell.type === 'broadcastTower'
       ) {
         canConnectFromCurrent = true;
       }
@@ -130,7 +134,8 @@ export function calculatePowerNetwork(
         neighbor.type === 'windmill' ||
         neighbor.type === 'house' ||
         neighbor.type === 'factory' ||
-        neighbor.type === 'battery'
+        neighbor.type === 'battery' ||
+        neighbor.type === 'broadcastTower'
       ) {
         canConnectFromNeighbor = true;
       }
@@ -169,17 +174,14 @@ export function calculatePowerNetwork(
     for (let x = 0; x < GRID_SIZE; x++) {
       const cell = grid[y][x];
       if (
-        (cell.type === 'house' || cell.type === 'factory') &&
+        (cell.type === 'house' || cell.type === 'factory' || cell.type === 'broadcastTower') &&
         connectedCells.has(`${x},${y}`)
       ) {
-        connectedConsumers.push({
-          x,
-          y,
-          consumption:
-            cell.type === 'house'
-              ? BUILDING_STATS.house.consumption
-              : BUILDING_STATS.factory.consumption,
-        });
+        let consumption = 0;
+        if (cell.type === 'house') consumption = BUILDING_STATS.house.consumption;
+        else if (cell.type === 'factory') consumption = BUILDING_STATS.factory.consumption;
+        else if (cell.type === 'broadcastTower') consumption = BUILDING_STATS.broadcastTower.consumption;
+        connectedConsumers.push({ x, y, consumption });
       }
     }
   }

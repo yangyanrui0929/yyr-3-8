@@ -1,6 +1,6 @@
 import React from 'react';
 import { useGameStore } from '../store/useGameStore';
-import { Sun, Moon, Zap, Battery, Smile, Meh, Frown } from 'lucide-react';
+import { Sun, Moon, Zap, Battery, Smile, Meh, Frown, Shield } from 'lucide-react';
 
 export const StatusBar: React.FC = () => {
   const {
@@ -10,6 +10,7 @@ export const StatusBar: React.FC = () => {
     storedPower,
     maxStorage,
     satisfaction,
+    trust,
     openSettlement,
   } = useGameStore();
 
@@ -29,6 +30,20 @@ export const StatusBar: React.FC = () => {
     if (satisfaction >= 40) return '一般';
     if (satisfaction >= 20) return '不太满意';
     return '非常不满';
+  };
+
+  const getTrustIcon = () => {
+    if (trust >= 70) return <Shield className="w-5 h-5 text-green-500" />;
+    if (trust >= 40) return <Shield className="w-5 h-5 text-yellow-500" />;
+    return <Shield className="w-5 h-5 text-red-500" />;
+  };
+
+  const getTrustText = () => {
+    if (trust >= 80) return '非常信任';
+    if (trust >= 60) return '比较信任';
+    if (trust >= 40) return '一般';
+    if (trust >= 20) return '不太信任';
+    return '非常不信任';
   };
 
   return (
@@ -131,6 +146,32 @@ export const StatusBar: React.FC = () => {
                     satisfaction >= 60
                       ? 'linear-gradient(90deg, #34D399, #10B981)'
                       : satisfaction >= 30
+                      ? 'linear-gradient(90deg, #FBBF24, #F59E0B)'
+                      : 'linear-gradient(90deg, #F87171, #EF4444)',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="h-10 w-px bg-gray-200" />
+
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+            {getTrustIcon()}
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">居民信任度</p>
+            <p className="text-sm font-bold text-gray-700">{getTrustText()}</p>
+            <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${trust}%`,
+                  background:
+                    trust >= 60
+                      ? 'linear-gradient(90deg, #34D399, #10B981)'
+                      : trust >= 30
                       ? 'linear-gradient(90deg, #FBBF24, #F59E0B)'
                       : 'linear-gradient(90deg, #F87171, #EF4444)',
                 }}
